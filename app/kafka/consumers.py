@@ -6,10 +6,18 @@ import json
 import os
 import uuid
 from dotenv import load_dotenv
+import pickle
+import time
 
 load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+classifier_path = os.path.join(os.path.dirname(__file__), "../../classifier/quality_classifier.pkl")
+with open(classifier_path, "rb") as f:
+    quality_classifier = pickle.load(f)
+
+EVALUATOR_TYPE = os.getenv("EVALUATOR_TYPE", "ollama")
 
 def run_trace_consumer():
     consumer = KafkaConsumer(
@@ -43,6 +51,29 @@ def run_trace_consumer():
             print(f"Trace consumer error: {e}")
             db.rollback()
 
+def evaluate_with_sklearn(prompt: str, response: str) -> dict:
+    start = time.time()
+    text = prompt + " " + response
+    prediction = quality_classifier.predict([text])[0]
+    score = float(quality_classifier.predict_proba([text])[0][prediction])
+    latency = round((time.time() - start) * 1000, 2)
+    print(f"Sklearn evaluation: {latency}ms")
+    
+    if prediction == 1:  # good response
+        return {
+            "relevance_score": score,
+            "hallucination_score": 1 - score,
+            "faithfulness_score": score,
+            "reasoning": f"Sklearn classifier: good response (confidence {score:.2f})"
+        }
+    else:  # bad response
+        return {
+            "relevance_score": 1 - score,
+            "hallucination_score": score,
+            "faithfulness_score": 1 - score,
+            "reasoning": f"Sklearn classifier: poor response (confidence {score:.2f})"
+        }
+
 def evaluate_with_ollama(prompt: str, response: str) -> dict:
     import httpx
     eval_prompt = f"""You are an expert evaluator. Score this LLM response on three metrics.
@@ -60,11 +91,14 @@ Return ONLY valid JSON like this:
 
 Scores must be between 0 and 1. hallucination_score: lower is better."""
 
+    start = time.time()
     result = httpx.post(
         "http://localhost:11434/api/generate",
         json={"model": "gemma:2b", "prompt": eval_prompt, "stream": False},
         timeout=120.0
     )
+    latency = round((time.time() - start) * 1000, 2)
+    print(f"Ollama evaluation: {latency}ms")
     data = result.json()
     text = data.get("response", "{}")
     # extract JSON from response
@@ -87,7 +121,12 @@ def run_evaluation_consumer():
     for message in consumer:
         try:
             data = message.value
-            scores = evaluate_with_ollama(data["prompt"], data["response"])
+
+            if EVALUATOR_TYPE == "sklearn":
+                scores = evaluate_with_sklearn(data["prompt"], data["response"])
+            else:
+                scores = evaluate_with_ollama(data["prompt"], data["response"])
+
             overall = (
                 scores["relevance_score"] +
                 (1 - scores["hallucination_score"]) +

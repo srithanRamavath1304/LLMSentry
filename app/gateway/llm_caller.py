@@ -11,7 +11,7 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 def call_gemini(prompt: str) -> dict:
     start = time.time()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash-lite",
         contents=prompt
     )
     latency_ms = (time.time() - start) * 1000
@@ -26,7 +26,7 @@ def call_gemini(prompt: str) -> dict:
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "provider": "gemini",
-        "model": "gemini-2.0-flash"
+        "model": "gemini-2.5-flash-lite"
     }
 
 def call_ollama(prompt: str) -> dict:

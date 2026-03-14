@@ -49,3 +49,20 @@ Results
 Processes 10K+ LLM calls with sub-100ms tracing overhead
 LLM-as-judge evaluation achieves ~89% agreement with human ratings
 Cost-aware routing reduces inference cost by ~38% across mixed workloads
+
+DashBoard link:
+
+http://127.0.0.1:8000/dashboard
+
+to setup venv:
+    source/venv/bin/activate
+
+to run ollama locally:
+    first check if its already running: pkill ollama
+    then: ollama serve
+
+to run application:
+    uvicorn app.main:app --reload  
+
+to run consumer: 
+    python run_consumer.py  
