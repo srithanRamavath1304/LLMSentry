@@ -364,12 +364,12 @@ def send_prompt(prompt: str):
 
 if __name__ == "__main__":
     total = 0
-    maxCap = 500
+    maxCap = 10000
     print(f"Starting simulator... Target: {maxCap} requests")
     while total < maxCap:
         prompt = random.choice(PROMPTS)
         send_prompt(prompt)
         total += 1
         print(f"Progress: {total}/{maxCap}")
-        time.sleep(1)
+        time.sleep(0.3) 
     print(f"Done! {maxCap} traces generated.")

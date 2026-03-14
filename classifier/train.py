@@ -37,7 +37,7 @@ def train():
     df["label"] = (df["complexity"] == "complex").astype(int)
     print(f"Complex: {df['label'].sum()}, Simple: {(df['label'] == 0).sum()}")
 
-    df["text"] = df["prompt"] + " " + df["response"]
+    df["text"] = df["prompt"]
 
     X = df["text"]
     y = df["label"]

@@ -28,7 +28,7 @@ def classify_complexity(prompt: str) -> str:
     
     if CLASSIFIER_TYPE == "sklearn":
         try:
-            prediction = complexity_classifier.predict([prompt + " "])[0]
+            prediction = complexity_classifier.predict([prompt])[0]
             result = "complex" if prediction == 1 else "simple"
             print(f"Sklearn classification: {result} in {round((time.time()-start)*1000, 2)}ms")
             return result
