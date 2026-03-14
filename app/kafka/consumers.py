@@ -13,9 +13,10 @@ load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-classifier_path = os.path.join(os.path.dirname(__file__), "../../classifier/quality_classifier.pkl")
-with open(classifier_path, "rb") as f:
-    quality_classifier = pickle.load(f)
+# evaluator model
+evaluator_path = os.path.join(os.path.dirname(__file__), "../../classifier/evaluator_model.pkl")
+with open(evaluator_path, "rb") as f:
+    evaluator_model = pickle.load(f)
 
 EVALUATOR_TYPE = os.getenv("EVALUATOR_TYPE", "gemini")
 
@@ -54,25 +55,18 @@ def run_trace_consumer():
 def evaluate_with_sklearn(prompt: str, response: str) -> dict:
     start = time.time()
     text = prompt + " " + response
-    prediction = quality_classifier.predict([text])[0]
-    score = float(quality_classifier.predict_proba([text])[0][prediction])
+    scores = {
+        metric: float(model.predict([text])[0])
+        for metric, model in evaluator_model.items()
+    }
     latency = round((time.time() - start) * 1000, 2)
     print(f"Sklearn evaluation: {latency}ms")
-    
-    if prediction == 1: 
-        return {
-            "relevance_score": score,
-            "hallucination_score": 1 - score,
-            "faithfulness_score": score,
-            "reasoning": f"Sklearn classifier: good response (confidence {score:.2f})"
-        }
-    else: 
-        return {
-            "relevance_score": 1 - score,
-            "hallucination_score": score,
-            "faithfulness_score": 1 - score,
-            "reasoning": f"Sklearn classifier: poor response (confidence {score:.2f})"
-        }
+    return {
+        "relevance_score": round(min(max(scores["relevance_score"], 0), 1), 4),
+        "hallucination_score": round(min(max(scores["hallucination_score"], 0), 1), 4),
+        "faithfulness_score": round(min(max(scores["faithfulness_score"], 0), 1), 4),
+        "reasoning": f"Sklearn evaluator: overall={round(scores['overall_score'], 4)}"
+    }
 
 def evaluate_with_ollama(prompt: str, response: str) -> dict:
     import httpx
@@ -101,7 +95,6 @@ Scores must be between 0 and 1. hallucination_score: lower is better."""
     print(f"Ollama evaluation: {latency}ms")
     data = result.json()
     text = data.get("response", "{}")
-    # extract JSON from response
     start = text.find("{")
     end = text.rfind("}") + 1
     json_str = text[start:end]
@@ -161,7 +154,7 @@ def run_evaluation_consumer():
             elif EVALUATOR_TYPE == "ollama":
                 scores = evaluate_with_ollama(data["prompt"], data["response"])
             else:
-                scores = evaluate_with_gemini(data["prompt"], data["response"]) 
+                scores = evaluate_with_gemini(data["prompt"], data["response"])
 
             overall = (
                 scores["relevance_score"] +

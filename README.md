@@ -66,3 +66,8 @@ to run application:
 
 to run consumer: 
     python run_consumer.py  
+
+to hit api:
+    curl -X POST http://127.0.0.1:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is the capital of France?"}'
