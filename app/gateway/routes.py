@@ -18,20 +18,16 @@ class PromptRequest(BaseModel):
 async def chat(request: PromptRequest, db: Session = Depends(get_db)):
     prompt = request.prompt
 
-    # step 1 — route
     routing = get_routing_decision(prompt)
 
-    # step 2 — call LLM
     result = call_llm(routing["provider"], prompt)
 
-    # step 3 — calculate cost
     cost = calculate_cost(
         routing["provider"],
         result["input_tokens"],
         result["output_tokens"]
     )
 
-    # step 4 — build trace
     trace = {
         "id": str(uuid.uuid4()),
         "prompt": prompt,
@@ -46,11 +42,9 @@ async def chat(request: PromptRequest, db: Session = Depends(get_db)):
         "created_at": datetime.utcnow().isoformat()
     }
 
-    # step 5 — publish to kafka async (non-blocking)
     publish_trace(trace)
     publish_evaluation_request(trace)
 
-    # step 6 — return response immediately
     return {
         "response": result["response"],
         "provider": result["provider"],

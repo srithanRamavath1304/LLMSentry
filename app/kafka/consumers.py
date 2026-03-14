@@ -17,7 +17,7 @@ classifier_path = os.path.join(os.path.dirname(__file__), "../../classifier/qual
 with open(classifier_path, "rb") as f:
     quality_classifier = pickle.load(f)
 
-EVALUATOR_TYPE = os.getenv("EVALUATOR_TYPE", "ollama")
+EVALUATOR_TYPE = os.getenv("EVALUATOR_TYPE", "gemini")
 
 def run_trace_consumer():
     consumer = KafkaConsumer(
@@ -59,14 +59,14 @@ def evaluate_with_sklearn(prompt: str, response: str) -> dict:
     latency = round((time.time() - start) * 1000, 2)
     print(f"Sklearn evaluation: {latency}ms")
     
-    if prediction == 1:  # good response
+    if prediction == 1: 
         return {
             "relevance_score": score,
             "hallucination_score": 1 - score,
             "faithfulness_score": score,
             "reasoning": f"Sklearn classifier: good response (confidence {score:.2f})"
         }
-    else:  # bad response
+    else: 
         return {
             "relevance_score": 1 - score,
             "hallucination_score": score,
@@ -108,6 +108,40 @@ Scores must be between 0 and 1. hallucination_score: lower is better."""
     scores = json.loads(json_str)
     return scores
 
+def evaluate_with_gemini(prompt: str, response: str) -> dict:
+    eval_prompt = f"""You are an expert LLM response evaluator. Score this response strictly and objectively.
+
+Question: {prompt}
+Response: {response}
+
+Return ONLY valid JSON with NO extra text:
+{{
+    "relevance_score": 0.0,
+    "hallucination_score": 0.0,
+    "faithfulness_score": 0.0,
+    "reasoning": "brief explanation"
+}}
+
+Scoring rules:
+- relevance_score: 0.0-1.0, how well response answers the question
+- hallucination_score: 0.0-1.0, lower is better, how much false info
+- faithfulness_score: 0.0-1.0, how factually consistent the response is
+- Use full decimal precision, do not round scores to 2 decimal places
+- Example: use 0.73642 not 0.74
+- Be strict and vary your scores, don't give everything 0.8+"""
+    start = time.time()
+    response_obj = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=eval_prompt
+    )
+    latency = round((time.time() - start) * 1000, 2)
+    print(f"Gemini evaluation: {latency}ms")
+    text = response_obj.text.strip()
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    scores = json.loads(text[start:end])
+    return scores
+
 def run_evaluation_consumer():
     consumer = KafkaConsumer(
         "llm.evaluations",
@@ -124,8 +158,10 @@ def run_evaluation_consumer():
 
             if EVALUATOR_TYPE == "sklearn":
                 scores = evaluate_with_sklearn(data["prompt"], data["response"])
-            else:
+            elif EVALUATOR_TYPE == "ollama":
                 scores = evaluate_with_ollama(data["prompt"], data["response"])
+            else:
+                scores = evaluate_with_gemini(data["prompt"], data["response"]) 
 
             overall = (
                 scores["relevance_score"] +
