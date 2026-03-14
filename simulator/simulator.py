@@ -355,21 +355,25 @@ def send_prompt(prompt: str):
         response = httpx.post(
             "http://127.0.0.1:8000/api/v1/chat",
             json={"prompt": prompt},
-            timeout=120.0
+            timeout=30.0
         )
         data = response.json()
         print(f"✓ [{data['complexity']}] [{data['provider']}] {prompt[:40]}... ({data['latency_ms']}ms)")
+    except httpx.TimeoutException:
+        print(f"✗ Timeout, skipping: {prompt[:40]}")
     except Exception as e:
         print(f"✗ Error: {e}")
 
 if __name__ == "__main__":
     total = 0
-    maxCap = 10000
+    maxCap = 9437
     print(f"Starting simulator... Target: {maxCap} requests")
     while total < maxCap:
         prompt = random.choice(PROMPTS)
-        send_prompt(prompt)
-        total += 1
-        print(f"Progress: {total}/{maxCap}")
-        time.sleep(0.3) 
+        try:
+            send_prompt(prompt)
+            total += 1
+            print(f"Progress: {total}/{maxCap}")
+        except Exception as e:
+            print(f"Error: {e}")
     print(f"Done! {maxCap} traces generated.")
