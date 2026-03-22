@@ -34,7 +34,7 @@ Trace Consumer          Evaluator Consumer
 - **LLM-as-judge evaluation** — automatically scores responses for hallucination, relevance, and faithfulness using Gemini as judge
 - **Cost-aware model router** — routes ~60% of queries to zero-cost local Ollama, complex queries to Gemini
 - **Sklearn distilled classifier** — complexity classifier trained via knowledge distillation, 93x faster than LLM-based classification (5.67ms vs 528ms)
-- **Sklearn distilled evaluator** — evaluation model trained on Gemini judge labels, 36x faster than Gemini inference (29ms vs 1078ms)
+- **Sklearn distilled evaluator** — evaluation model trained on Gemini judge labels, 60x+ faster than Gemini inference (29ms vs 2347ms)
 - **Configurable via env** — switch between sklearn/ollama/gemini for both classification and evaluation
 - **Live dashboard** — real-time metrics, cost breakdown, evaluation scores, recent traces
 
@@ -98,8 +98,8 @@ llmsentry/
 | Method | Classification Latency | Evaluation Latency |
 |--------|----------------------|-------------------|
 | Sklearn | 5.67ms | 29.58ms |
-| Ollama | 528ms | 1524ms |
-| Gemini | — | 1078ms |
+| Ollama | 528ms | 2347ms |
+| Gemini | — | 1874ms |
 
 Sklearn complexity classifier achieves **89.8% accuracy** on test set.
 
