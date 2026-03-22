@@ -1,61 +1,131 @@
-LLMSentry
+# LLMSentry
 
-    A production-grade LLM observability and evaluation platform that provides real-time tracing, automated quality scoring, and cost-aware model routing for applications built on top of Large Language Models.
+A production-grade LLM observability and evaluation platform that provides real-time tracing, automated quality scoring, and cost-aware model routing for applications built on top of Large Language Models.
 
-Problem
+## Problem
 
-    Teams deploying LLMs in production have zero visibility into what's happening — rising costs, silent hallucinations, latency spikes, and no way to know if responses are actually good. LLMSentry fixes that.
+Teams deploying LLMs in production have zero visibility into what's happening — rising costs, silent hallucinations, latency spikes, and no way to know if responses are actually good. LLMSentry fixes that.
 
-Architecture
-
-    Client App / Simulator
+## Architecture
+```
+Client App / Simulator
+        ↓
+FastAPI Gateway (intercepts every LLM call)
+        ↓
+Model Router (LLM-based complexity classifier → Gemini or Ollama)
+        ↓
+LLM Providers (Gemini 2.5 Flash Lite, Ollama Gemma-2B)
+        ↓
+Kafka (publishes trace events asynchronously)
+        ↓
+    ┌───────────────────────┐
+    ↓                       ↓
+Trace Consumer          Evaluator Consumer
+(PostgreSQL)            (Gemini / Sklearn)
+    ↓                       ↓
+    └───────────────────────┘
             ↓
-    FastAPI Gateway (intercepts every LLM call)
-            ↓
-    Model Router (picks Gemini or Ollama based on complexity + cost)
-            ↓
-    LLM Providers (Gemini, Ollama)
-            ↓
-    Kafka (publishes trace events asynchronously)
-            ↓
-        ┌───────────────────────┐
-        ↓                       ↓
-    Trace Consumer          Evaluator Consumer
-    (PostgreSQL)            (LLM-as-judge scoring)
-        ↓                       ↓
-        └───────────────────────┘
-                ↓
-        Dashboard (real-time metrics, cost, quality)
+      Dashboard (real-time metrics, cost, quality)
+```
 
-Features
+## Features
 
-Real-time tracing — captures latency, token usage, cost, and provider for every LLM call
-LLM-as-judge evaluation — automatically scores responses for hallucination, relevance, and faithfulness
-Cost-aware model router — routes complex queries to Gemini, simple queries to Ollama, reducing inference cost
-Kafka-based async pipeline — sub-100ms overhead on every intercepted call
-Dashboard — live view of traces, evaluation scores, cost breakdown
+- **Real-time tracing** — captures latency, token usage, cost, and provider for every LLM call with sub-100ms overhead
+- **LLM-as-judge evaluation** — automatically scores responses for hallucination, relevance, and faithfulness using Gemini as judge
+- **Cost-aware model router** — routes ~60% of queries to zero-cost local Ollama, complex queries to Gemini
+- **Sklearn distilled classifier** — complexity classifier trained via knowledge distillation, 93x faster than LLM-based classification (5.67ms vs 528ms)
+- **Sklearn distilled evaluator** — evaluation model trained on Gemini judge labels, 36x faster than Gemini inference (29ms vs 1078ms)
+- **Configurable via env** — switch between sklearn/ollama/gemini for both classification and evaluation
+- **Live dashboard** — real-time metrics, cost breakdown, evaluation scores, recent traces
 
-Tech Stack
+## Tech Stack
 
-Gateway & API — FastAPI, Python
-Message Queue — Apache Kafka
-Cache & State — Redis
-Database — PostgreSQL
-LLM Providers — Google Gemini, Ollama
-Infrastructure — Docker Compose
+| Component | Technology |
+|-----------|-----------|
+| Gateway & API | FastAPI, Python |
+| Message Queue | Apache Kafka |
+| Cache & Routing | Redis |
+| Database | PostgreSQL |
+| LLM Providers | Google Gemini 2.5 Flash Lite, Ollama (Gemma-2B) |
+| ML Models | Scikit-learn, TF-IDF, Random Forest |
+| Infrastructure | Docker Compose |
 
-Results
+## Getting Started
+```bash
+git clone https://github.com/srithanRamavath1304/LLMSentry
+cd LLMSentry
+cp .env.example .env
+# Add your Gemini API key to .env
+docker-compose up -d
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
-Processes 10K+ LLM calls with sub-100ms tracing overhead
-LLM-as-judge evaluation achieves ~89% agreement with human ratings
-Cost-aware routing reduces inference cost by ~38% across mixed workloads
+In a separate terminal:
+```bash
+python run_consumers.py
+```
+
+## Environment Variables
+```env
+GEMINI_API_KEY=your_key_here
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+REDIS_URL=redis://localhost:6379
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/llmsentry
+COMPLEXITY_CLASSIFIER=sklearn   # or "ollama"
+EVALUATOR_TYPE=sklearn          # or "ollama" or "gemini"
+```
+
+## Project Structure
+```
+llmsentry/
+├── app/
+│   ├── gateway/        # FastAPI routes, LLM caller
+│   ├── router/         # Cost-aware model router, complexity classifier
+│   ├── kafka/          # Producer, trace and evaluation consumers
+│   ├── evaluator/      # LLM-as-judge scoring
+│   ├── models/         # DB models, database connection
+│   └── dashboard/      # Real-time metrics UI
+├── classifier/         # Sklearn training scripts and saved models
+├── simulator/          # Traffic simulation for load testing
+├── run_consumers.py    # Starts both Kafka consumers in parallel
+├── docker-compose.yml
+└── .env.example
+```
+
+## Benchmarks
+
+| Method | Classification Latency | Evaluation Latency |
+|--------|----------------------|-------------------|
+| Sklearn | 5.67ms | 29.58ms |
+| Ollama | 528ms | 1524ms |
+| Gemini | — | 1078ms |
+
+Sklearn complexity classifier achieves **89.8% accuracy** on test set.
+
+## Key Design Decisions
+
+**Why Kafka?**
+Trace saving and evaluation are decoupled from the request path. Publishing to Kafka adds <10ms overhead vs 50-100ms for synchronous DB writes.
+
+**Why two separate Kafka topics?**
+Trace saving (fast) and evaluation (slow) are independent operations. Separating them means slow evaluation never blocks trace persistence.
+
+**Why Redis for routing cache?**
+Routing decisions are deterministic for the same prompt. Caching avoids re-running the classifier for repeated queries — critical at scale.
+
+**Why knowledge distillation?**
+LLM-based classification (528ms) and evaluation (1078ms) are too slow for production. Training sklearn models on LLM-generated labels gives comparable quality at 30x lower latency.
+
+**Why switch from Gemma-2B to Gemini for evaluation labels?**
+Gemma-2B showed severe score anchoring bias — 75% of evaluations returned exactly 0.88, giving near-zero variance. Gemini produced scores across the full 0-1 range (StdDev 0.28), enabling meaningful distillation.
 
 DashBoard link:
 
 http://127.0.0.1:8000/dashboard
 
 to setup venv:
-    source/venv/bin/activate
+    source venv/bin/activate
 
 to run ollama locally:
     first check if its already running: pkill ollama

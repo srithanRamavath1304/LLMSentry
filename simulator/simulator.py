@@ -366,7 +366,7 @@ def send_prompt(prompt: str):
 
 if __name__ == "__main__":
     total = 0
-    maxCap = 9437
+    maxCap = 10000
     print(f"Starting simulator... Target: {maxCap} requests")
     while total < maxCap:
         prompt = random.choice(PROMPTS)
